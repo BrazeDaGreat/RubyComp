@@ -1,0 +1,24 @@
+.floating {
+  font-family: "Courier New", Courier, monospace;
+  text-align: center;
+
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-color: cadetblue;
+  padding: 48px;
+  border-radius: 18px;
+  box-shadow: 0 0 24px 0 rgba(0, 0, 0, 0.2);
+
+  h1 {
+    font-size: 48px;
+    font-weight: 600;
+    color: coral;
+  }
+
+  p {
+    color: aliceblue;
+    font-weight: 600;
+  }
+}
