@@ -3,7 +3,7 @@ require 'sassc'
 require 'fileutils'
 
 # Constants
-VERSION = '1.0'
+VERSION = '1.1'
 
 # Compile HTML, SCSS, and JS files based on changes detected in specified directories.
 #
@@ -12,7 +12,11 @@ def compile_files(files)
   files.each do |file|
     case File.extname(file)
     when '.html'
-      compile_html(file)
+      if file.include?("components")
+        compile_html(file, true)
+        next
+      end
+      compile_html(file, false)
     when '.scss'
       compile_scss(file)
     when '.js'
@@ -24,7 +28,7 @@ end
 # Compile HTML file by replacing tags and including component files.
 #
 # @param file [String] Path to the HTML file to compile.
-def compile_html(file)
+def compile_html(file, isComponent)
   # Read the content of the HTML file
   html_content = File.read(file)
 
@@ -46,13 +50,18 @@ def compile_html(file)
   # Replace <C> tags with content of the component file
   html_content.gsub!(/<C>(.*?)<\/C>/m) do
     component_file = "components/#{$1}.html"
-    File.exist?(component_file) ? File.read(component_file) : ""
+
+    File.exist?(component_file) ? compile_html(component_file, true) : ""
   end
 
-  # Write the compiled HTML content to the build directory
-  output_file = "build/#{File.basename(file)}"
-  File.write(output_file, html_content)
-  puts "Compiled #{file} to #{output_file}"
+  if !isComponent
+    # Write the compiled HTML content to the build directory
+    output_file = "build/#{File.basename(file)}"
+    File.write(output_file, html_content)
+    puts "Compiled #{file} to #{output_file}"
+  else
+    return html_content
+  end
 end
 
 # Compile SCSS file into CSS.
@@ -105,6 +114,12 @@ Dir.mkdir('build/css') unless Dir.exist?('build/css')
 
 # Define the directories to watch
 directories = ['html', 'scss', 'js', 'components']
+
+# Compile all the files in the directories at first start
+directories.each do |directory|
+  compile_files(Dir.glob("#{directory}/*"))
+end
+
 
 # Create a listener to watch for changes
 listener = Listen.to(*directories) do |modified, added, removed|
