@@ -11,6 +11,7 @@ Compile HTML Templates using Ruby. This tool can be used to compile multiple sep
 ```
 gem install sassc
 gem install listen
+gem install colorize
 ```
 
 - Run RubyComp
@@ -49,3 +50,7 @@ $ ./rubycomp
 ## SCSS
 
 - SCSS gets compiled to CSS.
+
+## Components
+
+- Components must have the extension `.xhtml`

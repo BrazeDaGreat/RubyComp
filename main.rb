@@ -1,140 +1,100 @@
 require 'listen'
 require 'sassc'
 require 'fileutils'
+require 'colorize'
 
-# Constants
-VERSION = '1.1'
+module Compiler
+  VERSION = '2.0.0'
+  DEPENDENCIES = {}
 
-# Compile HTML, SCSS, and JS files based on changes detected in specified directories.
-#
-# @param files [Array<String>] List of files that have been modified or added.
-def compile_files(files)
-  files.each do |file|
-    case File.extname(file)
-    when '.html'
-      if file.include?("components")
-        compile_html(file, true)
-        next
+  def self.compile_files(files)
+    files.each do |file|
+      case File.extname(file)
+      when '.xhtml'
+        process_component(file)
+      when '.html'
+        compile_html(file)
+      when '.scss'
+        compile_scss(file)
+      when '.js'
+        compile_js(file)
       end
-      compile_html(file, false)
-    when '.scss'
-      compile_scss(file)
-    when '.js'
-      compile_js(file)
     end
   end
-end
 
-# Compile HTML file by replacing tags and including component files.
-#
-# @param file [String] Path to the HTML file to compile.
-def compile_html(file, isComponent)
-  # Read the content of the HTML file
-  html_content = File.read(file)
-
-  # Replace <r> tags with the VERSION constant
-  html_content.gsub!(/<R>(.*?)<\/R>/m) do
-    eval($1)
+  def self.html_processor(html_content, filepath = nil)
+    html_content.gsub!(/<R>(.*?)<\/R>/m) { eval($1) }
+    html_content.gsub!(/<JS>(.*?)<\/JS>/m) { "<script src=\"./js/#{$1}.js\"></script>" }
+    html_content.gsub!(/<SCSS>(.*?)<\/SCSS>/m) { "<link rel=\"stylesheet\" href=\"./css/#{$1}.css\">" }
+    html_content.gsub!(/<C>(.*?)<\/C>/m) do
+      component_file = "build/.cache/comp_#{$1}.xhtml"
+      if $1 && filepath
+        DEPENDENCIES["#{$1}.xhtml"] ||= []
+        DEPENDENCIES["#{$1}.xhtml"].push(filepath) unless DEPENDENCIES["#{$1}.xhtml"].include?(filepath)
+      end
+      File.exist?(component_file) ? File.read(component_file) : ""
+    end
+    html_content
   end
 
-  # Replace <JS> tags with <script> tags
-  html_content.gsub!(/<JS>(.*?)<\/JS>/m) do
-    "<script src=\"./js/#{$1}.js\"></script>"
+  def self.process_component(file)
+    DEPENDENCIES[File.basename(file)] ||= []
+    html_content = File.read(file)
+    pre_processed = html_processor(html_content, file)
+    output_file = "build/.cache/comp_#{File.basename(file)}"
+    File.write(output_file, pre_processed)
+    puts "Detected, compiled 1 file(s)".green
+    DEPENDENCIES[File.basename(file)].each do |dep|
+      puts "Detected, compiled 2 file(s)".green
+      if File.extname(dep) == '.html'
+        compile_html(dep)
+      elsif File.extname(dep) == '.xhtml'
+        process_component(dep)
+      end
+    end
   end
 
-  # Replace <SCSS> tags with <link> tags
-  html_content.gsub!(/<SCSS>(.*?)<\/SCSS>/m) do
-    "<link rel=\"stylesheet\" href=\"./css/#{$1}.css\">"
-  end
-
-  # Replace <C> tags with content of the component file
-  html_content.gsub!(/<C>(.*?)<\/C>/m) do
-    component_file = "components/#{$1}.html"
-
-    File.exist?(component_file) ? compile_html(component_file, true) : ""
-  end
-
-  if !isComponent
-    # Write the compiled HTML content to the build directory
+  def self.compile_html(file)
+    html_content = File.read(file)
+    pre_processed = html_processor(html_content, file)
     output_file = "build/#{File.basename(file)}"
-    File.write(output_file, html_content)
-    puts "Compiled #{file} to #{output_file}"
-  else
-    return html_content
+    File.write(output_file, pre_processed)
+    puts "Detected, compiled 1 file(s)".green
+  end
+
+  def self.compile_scss(file)
+    scss_content = File.read(file)
+    css_content = SassC::Engine.new(scss_content, syntax: :scss).render
+    output_file = "build/css/#{File.basename(file, '.scss')}.css"
+    File.write(output_file, css_content)
+    puts "Detected, compiled 1 file(s)".green
+  end
+
+  def self.compile_js(file)
+    js_content = File.read(file)
+    js_content.gsub!(/ruby\(\"(.*?)\"\)/m) { eval($1) }
+    js_content.gsub!(/import\(\"(.*?)\"\)/m) do
+      code_file = "js/#{$1}"
+      File.exist?(code_file) ? File.read(code_file) : ""
+    end
+    output_file = "build/js/#{File.basename(file)}"
+    File.write(output_file, js_content)
+    puts "Detected, compiled 1 file(s)".green
   end
 end
 
-# Compile SCSS file into CSS.
-#
-# @param file [String] Path to the SCSS file to compile.
-def compile_scss(file)
-  # Read the content of the SCSS file
-  scss_content = File.read(file)
+puts "---- [ RubyComp v#{Compiler::VERSION} ] ----".blue
+puts "Initialized, listening for changes ...".green
 
-  # Compile SCSS to CSS
-  css_content = SassC::Engine.new(scss_content, syntax: :scss).render
-
-  # Write the compiled CSS content to the build directory
-  output_file = "build/css/#{File.basename(file, '.scss')}.css"
-  File.write(output_file, css_content)
-  puts "Compiled #{file} to #{output_file}"
-end
-
-# Copy JS file to the build directory.
-#
-# @param file [String] Path to the JS file to copy.
-def compile_js(file)
-  # Read the content of the JS file
-  js_content = File.read(file)
-
-  # Evaluate Ruby code embedded within ruby() function calls and replace with result
-  js_content.gsub!(/ruby\(\"(.*?)\"\)/m) do
-    eval($1)
-  end
-
-  # Replace import() function with content of the component file
-  js_content.gsub!(/import\(\"(.*?)\"\)/m) do
-    code_file = "js/#{$1}"
-    File.exist?(code_file) ? File.read(code_file) : ""
-  end
-
-  # Write the compiled JS content to the build directory
-  output_file = "build/js/#{File.basename(file)}"
-  File.write(output_file, js_content)
-  puts "Compiled #{file} to #{output_file}"
-end
-
-
-# Create build directory if it doesn't exist
-Dir.mkdir('build') unless Dir.exist?('build')
-# Create build/js directory if it doesn't exist
-Dir.mkdir('build/js') unless Dir.exist?('build/js')
-# Create build/css directory if it doesn't exist
-Dir.mkdir('build/css') unless Dir.exist?('build/css')
-
-# Define the directories to watch
 directories = ['html', 'scss', 'js', 'components']
-
-# Compile all the files in the directories at first start
 directories.each do |directory|
-  compile_files(Dir.glob("#{directory}/*"))
+  Compiler.compile_files(Dir.glob("#{directory}/*"))
 end
 
-
-# Create a listener to watch for changes
-listener = Listen.to(*directories) do |modified, added, removed|
-  puts "Changes detected:"
-  puts "Modified: #{modified.join(', ')}" unless modified.empty?
-  puts "Added: #{added.join(', ')}" unless added.empty?
-  puts "Removed: #{removed.join(', ')}" unless removed.empty?
-
-  # Perform compilation when changes detected
-  compile_files(modified + added)
+listener = Listen.to(*directories) do |modified, added, _removed|
+  puts "Detected, compiled #{modified.length + added.length} file(s)".green
+  Compiler.compile_files(modified + added)
 end
 
-# Start the listener
-puts "Listening for changes..."
 listener.start
-
-# Don't exit immediately, keep listening
 sleep
