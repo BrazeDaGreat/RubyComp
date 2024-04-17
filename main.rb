@@ -3,8 +3,11 @@ require 'sassc'
 require 'fileutils'
 require 'colorize'
 
+# Importing all the Add-ons.
+Dir["addons/*.rb"].each { |file| require_relative file }
+
 module Compiler
-  VERSION = '2.0.0'
+  VERSION = '2.1.0'
   DEPENDENCIES = {}
 
   def self.compile_files(files)
