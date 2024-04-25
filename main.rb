@@ -2,12 +2,13 @@ require 'listen'
 require 'sassc'
 require 'fileutils'
 require 'colorize'
+require 'io/console'
 
 # Importing all the Add-ons.
 Dir["addons/*.rb"].each { |file| require_relative file }
 
 module Compiler
-  VERSION = '2.3.0'
+  VERSION = '3.0'
   DEPENDENCIES = {}
 
   def self.compile_files(files)
@@ -23,15 +24,11 @@ module Compiler
         compile_js(file)
       end
     end
+    puts "|".white + " ~> ".red + "Compiled".white + " #{files.length} ".green + "file(s).".white
   end
 
   def self.parse_component(component_file, attributes)
     file = File.read(component_file)
-
-    puts attributes
-    # remove all `?` from attributes
-    # attributes = attributes.gsub!('?', '')
-
     attributes_hash = eval(attributes)
 
     # Scan for {{x}} where x is a key in attributes_hash
@@ -39,7 +36,6 @@ module Compiler
       x = $1
       key = x.dup
       key.gsub!("?",'')
-      puts key
       if attributes_hash.key?(key.to_sym)
         attributes_hash[key.to_sym]
       else
@@ -50,8 +46,6 @@ module Compiler
         end
       end
     end
-
-    puts attributes_hash
 
     file
   end
@@ -79,9 +73,7 @@ module Compiler
     pre_processed = html_processor(html_content, file)
     output_file = "build/.cache/comp_#{File.basename(file)}"
     File.write(output_file, pre_processed)
-    puts "Detected, compiled 1 file(s)".green
     DEPENDENCIES[File.basename(file)].each do |dep|
-      puts "Detected, compiled 2 file(s)".green
       if File.extname(dep) == '.html'
         compile_html(dep)
       elsif File.extname(dep) == '.xhtml'
@@ -95,7 +87,6 @@ module Compiler
     pre_processed = html_processor(html_content, file)
     output_file = "build/#{File.basename(file)}"
     File.write(output_file, pre_processed)
-    puts "Detected, compiled 1 file(s)".green
   end
 
   def self.compile_scss(file)
@@ -103,7 +94,6 @@ module Compiler
     css_content = SassC::Engine.new(scss_content, syntax: :scss).render
     output_file = "build/css/#{File.basename(file, '.scss')}.css"
     File.write(output_file, css_content)
-    puts "Detected, compiled 1 file(s)".green
   end
 
   def self.compile_js(file)
@@ -115,22 +105,41 @@ module Compiler
     end
     output_file = "build/js/#{File.basename(file)}"
     File.write(output_file, js_content)
-    puts "Detected, compiled 1 file(s)".green
   end
 end
 
-puts "---- [ RubyComp v#{Compiler::VERSION} ] ----".blue
-puts "Initialized, listening for changes ...".green
+
+# -------------------------------------------------------------------------------------------------------------------------------------------- #
+
+puts "--------------- ".white + "[ ".blue + "RubyComp".red + " v".white + "#{Compiler::VERSION}".red + " ]".blue + " ---------------".white
+puts "|".white + " ~> ".red + "Running".white + " ... ".green
+puts "|".white + " ~> ".red + "Press ".white + "c".red + " to exit.".white
+puts "|".white + " ~> ".red + "Press ".white + "r".red + " to force recompile.".white
 
 directories = ['html', 'scss', 'js', 'components']
+files_to_compile = []
 directories.each do |directory|
-  Compiler.compile_files(Dir.glob("#{directory}/*"))
+  files_to_compile += Dir.glob("#{directory}/*")
 end
 
+Compiler.compile_files(files_to_compile)
+
 listener = Listen.to(*directories) do |modified, added, _removed|
-  puts "Detected, compiled #{modified.length + added.length} file(s)".green
+  puts "|".white + " ~> ".red + "Changes detected.".white
   Compiler.compile_files(modified + added)
 end
 
 listener.start
-sleep
+
+loop do
+  begin
+    case $stdin.getch
+    when 'r'
+      puts "|".white + " ~> ".red + "Forcing recompile...".white
+      Compiler.compile_files(files_to_compile)
+    when 'c'
+      puts "|".white + " ~> ".red + "Exiting...".white
+      break
+    end
+  end
+end
