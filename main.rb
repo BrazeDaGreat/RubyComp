@@ -7,7 +7,7 @@ require 'colorize'
 Dir["addons/*.rb"].each { |file| require_relative file }
 
 module Compiler
-  VERSION = '2.1.0'
+  VERSION = '2.3.0'
   DEPENDENCIES = {}
 
   def self.compile_files(files)
@@ -25,17 +25,50 @@ module Compiler
     end
   end
 
+  def self.parse_component(component_file, attributes)
+    file = File.read(component_file)
+
+    puts attributes
+    # remove all `?` from attributes
+    # attributes = attributes.gsub!('?', '')
+
+    attributes_hash = eval(attributes)
+
+    # Scan for {{x}} where x is a key in attributes_hash
+    file.gsub!(/{{(.*?)}}/) do
+      x = $1
+      key = x.dup
+      key.gsub!("?",'')
+      puts key
+      if attributes_hash.key?(key.to_sym)
+        attributes_hash[key.to_sym]
+      else
+        if x.include?("?")
+          ""
+        else
+          "<script>alert('Key #{key} is missing from #{component_file}.')</script>"
+        end
+      end
+    end
+
+    puts attributes_hash
+
+    file
+  end
+
   def self.html_processor(html_content, filepath = nil)
     html_content.gsub!(/<R>(.*?)<\/R>/m) { eval($1) }
     html_content.gsub!(/<JS>(.*?)<\/JS>/m) { "<script src=\"./js/#{$1}.js\"></script>" }
     html_content.gsub!(/<SCSS>(.*?)<\/SCSS>/m) { "<link rel=\"stylesheet\" href=\"./css/#{$1}.css\">" }
-    html_content.gsub!(/<C>(.*?)<\/C>/m) do
-      component_file = "build/.cache/comp_#{$1}.xhtml"
-      if $1 && filepath
-        DEPENDENCIES["#{$1}.xhtml"] ||= []
-        DEPENDENCIES["#{$1}.xhtml"].push(filepath) unless DEPENDENCIES["#{$1}.xhtml"].include?(filepath)
+
+    html_content.gsub!(/<C(\s+[^>]+)?>([^<]+)<\/C>/) do
+      attributes = $1
+      component_file = "build/.cache/comp_#{$2}.xhtml"
+      if $2 && filepath
+        DEPENDENCIES["#{$2}.xhtml"] ||= []
+        DEPENDENCIES["#{$2}.xhtml"].push(filepath) unless DEPENDENCIES["#{$2}.xhtml"].include?(filepath)
       end
-      File.exist?(component_file) ? File.read(component_file) : ""
+      File.exist?(component_file) ? self.parse_component(component_file, attributes) : ""
     end
     html_content
   end
