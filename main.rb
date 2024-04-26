@@ -8,7 +8,7 @@ require 'io/console'
 Dir["addons/*.rb"].each { |file| require_relative file }
 
 module Compiler
-  VERSION = '3.0'
+  VERSION = '3.1'
   DEPENDENCIES = {}
 
   def self.compile_files(files)
@@ -29,6 +29,9 @@ module Compiler
 
   def self.parse_component(component_file, attributes)
     file = File.read(component_file)
+    if attributes == nil
+      attributes = "{}"
+    end
     attributes_hash = eval(attributes)
 
     # Scan for {{x}} where x is a key in attributes_hash
